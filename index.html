@@ -98,30 +98,54 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
 .board table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
 .board th,.board td{text-align:left;padding:6px 10px;border-top:1px solid var(--line);vertical-align:top}
 .board th{color:var(--muted);font-weight:500}
+.navp{margin-top:20px;display:grid;gap:8px}
+.navp h2{font-size:14px;margin:0;color:var(--muted);font-weight:500}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;padding:4px 0;font-size:13px;font-variant-numeric:tabular-nums;text-align:center}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+.chip.ok{background:var(--good-soft);border-color:var(--good);color:var(--good);font-weight:700}
+.chip.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:700}
+.chip.review{background:var(--warn-soft);border-color:var(--warn);color:var(--warn);font-weight:700}
+.float{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:25;display:flex;gap:14px;align-items:baseline;background:var(--surface);color:var(--ink);border:1px solid var(--accent);border-radius:999px;padding:8px 18px;box-shadow:0 2px 10px rgba(0,0,0,.18);font-variant-numeric:tabular-nums;white-space:nowrap}
+.float b{font-size:18px}
+.float small{color:var(--muted);font-size:12px}
+.gate-start{margin-top:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn:disabled{opacity:.45;cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
 
 <div class="wrap" id="root">
-  <div class="bar">
+  <div class="float" id="float" hidden aria-live="off"><span><b id="fcount">0/50</b> <small>câu đã làm</small></span><span><b id="ftime">50:00</b> <small>còn lại</small></span></div>
+  <div class="bar" id="bar" hidden>
     <div class="bar-row">
       <span class="bar-title">HSK 2 (3.0) · Bài 1–10</span>
+      <span class="bar-count" id="timer">Còn 50:00</span>
       <span class="bar-count" id="count">Đã làm 0/50</span>
       <button class="btn" id="submitTop" type="button">Nộp bài</button>
     </div>
     <div class="track"><div class="fill" id="fill"></div></div>
   </div>
 
-  <header class="intro">
+  <header class="intro" id="gate">
     <h1>Kiểm tra giữa khóa HSK 2</h1>
-    <p class="meta">Phần Đọc + Viết · 50 câu · mỗi câu 2 điểm · tổng 100 điểm · 60 phút</p>
-    <p class="note">Đề chỉ dùng từ vựng và ngữ pháp Bài 1–10. Câu 1–40 và câu sắp xếp được chấm tự động. Câu viết chữ Hán (41–50) được so với đáp án mẫu; câu nào chưa khớp sẽ được đánh dấu để giáo viên xem lại.</p>
+    <p class="meta">Phần Đọc + Viết · 50 câu · mỗi câu 2 điểm · tổng 100 điểm · 50 phút</p>
+    <p class="note">Điền họ tên và lớp, rồi bấm “Bắt đầu làm bài”. Đồng hồ 50 phút chạy từ lúc đó và bài tự nộp khi hết giờ. Câu 1–40 và câu sắp xếp được chấm tự động. Câu viết chữ Hán (41–50) được so với đáp án mẫu; câu nào chưa khớp sẽ được đánh dấu để giáo viên xem lại.</p>
     <div class="who">
       <label for="nm">Họ tên</label><input id="nm" type="text" autocomplete="name" placeholder="Nguyễn Văn A">
       <label for="cl">Lớp</label><input id="cl" type="text" placeholder="HSK2-A">
     </div>
+    <div class="gate-start">
+      <button class="btn" id="start" type="button" disabled>Bắt đầu làm bài</button>
+      <span class="meta" id="startHint">Cần điền cả họ tên và lớp.</span>
+    </div>
   </header>
   <div class="board" id="board"><button class="btn ghost" id="boardBtn" type="button" hidden>Xem bảng điểm</button></div>
 
+  <div id="exam" hidden>
+  <div class="navp">
+    <h2>Tiến độ làm bài (bấm số để nhảy tới câu)</h2>
+    <div class="chips" id="chips"></div>
+  </div>
   <div id="result" role="status" aria-live="polite"></div>
   <main id="app"></main>
 
@@ -129,6 +153,7 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
     <button class="btn" id="submitBot" type="button">Nộp bài</button>
     <button class="btn ghost" id="retry" type="button" hidden>Làm lại</button>
     <span id="warn"></span>
+  </div>
   </div>
 </div>
 
@@ -215,12 +240,25 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
     return p;
   }
   function updateCount(){
-    var c=0;flat.forEach(function(q){if(ans[q.n]!==undefined&&ans[q.n]!=="")c++;});
+    var c=0;flat.forEach(function(q){var on=ans[q.n]!==undefined&&ans[q.n]!=="";if(on)c++;var ch=document.getElementById("chip"+q.n);if(ch&&!submitted)ch.classList.toggle("on",on);});
     document.getElementById("count").textContent="Đã làm "+c+"/50";
     document.getElementById("fill").style.width=(c/50*100)+"%";
+    document.getElementById("fcount").textContent=c+"/50";
     return c;
   }
-  function setAns(n,v){ans[n]=v;confirmed=false;document.getElementById("warn").textContent="";updateCount();}
+  var LIMIT=50*60,left=LIMIT,tick=null;
+  function fmt(s){var m=Math.floor(s/60),x=s%60;return (m<10?"0":"")+m+":"+(x<10?"0":"")+x;}
+  function showTime(){var t=document.getElementById("timer");t.textContent="Còn "+fmt(left);t.style.color=left<=300?"var(--bad)":"";t.style.fontWeight=left<=300?"700":"";document.getElementById("ftime").textContent=fmt(left);document.getElementById("float").style.color=left<=300?"var(--bad)":"";}
+  function startTimer(){
+    if(tick||submitted)return;
+    var end=Date.now()+left*1000;
+    tick=setInterval(function(){
+      left=Math.max(0,Math.round((end-Date.now())/1000));showTime();
+      if(left<=0){stopTimer();if(!submitted){confirmed=true;submit();}}
+    },1000);
+  }
+  function stopTimer(){if(tick){clearInterval(tick);tick=null;}}
+  function setAns(n,v){startTimer();ans[n]=v;confirmed=false;document.getElementById("warn").textContent="";updateCount();}
 
   /* ---------- Dựng từng loại câu hỏi ---------- */
   function build(q,part){
@@ -298,6 +336,8 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
       });
       app.append(sec);
     });
+    var nav=document.getElementById("chips");nav.textContent="";
+    flat.forEach(function(q){var c=h("button","chip",String(q.n));c.type="button";c.id="chip"+q.n;c.addEventListener("click",function(){q.row.scrollIntoView({behavior:"smooth",block:"center"});});nav.append(c);});
     updateCount();
   }
 
@@ -316,11 +356,12 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
   function submit(){
     var c=updateCount();
     if(c<50&&!confirmed){confirmed=true;document.getElementById("warn").textContent="Còn "+(50-c)+" câu chưa làm. Bấm “Nộp bài” lần nữa để nộp.";return;}
-    submitted=true;document.getElementById("warn").textContent="";
+    submitted=true;stopTimer();document.getElementById("warn").textContent="";
     document.getElementById("root").classList.add("done");
     var total=0,review=0,per={};
     flat.forEach(function(q){
       var g=grade(q);q.row.classList.add(g);
+      var chp=document.getElementById("chip"+q.n);chp.classList.remove("on");chp.classList.add(g);
       per[q.part]=per[q.part]||{ok:0,n:0};per[q.part].n++;
       if(g==="ok"){total++;per[q.part].ok++;}
       if(g==="review")review++;
@@ -368,7 +409,9 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
     }catch(e){st.textContent=fail;}
   }
   function retry(){
-    submitted=false;confirmed=false;
+    submitted=false;confirmed=false;stopTimer();left=LIMIT;showTime();
+    document.getElementById("exam").hidden=true;document.getElementById("bar").hidden=true;document.getElementById("float").hidden=true;
+    document.getElementById("gate").hidden=false;document.getElementById("board").hidden=false;
     document.getElementById("root").classList.remove("done");
     document.getElementById("result").classList.remove("show");
     document.getElementById("retry").hidden=true;
@@ -379,6 +422,15 @@ select,input[type=text]{font:inherit;font-family:var(--font-han);color:var(--ink
   document.getElementById("submitBot").addEventListener("click",function(){if(!submitted)submit();});
   document.getElementById("retry").addEventListener("click",retry);
   mount();
+  var nmI=document.getElementById("nm"),clI=document.getElementById("cl"),go=document.getElementById("start");
+  function chk(){var ok=!!(nmI.value.trim()&&clI.value.trim());go.disabled=!ok;document.getElementById("startHint").textContent=ok?"Sẵn sàng. Thời gian bắt đầu tính khi bạn bấm nút.":"Cần điền cả họ tên và lớp.";}
+  nmI.addEventListener("input",chk);clI.addEventListener("input",chk);chk();
+  go.addEventListener("click",function(){
+    if(go.disabled)return;
+    document.getElementById("gate").hidden=true;document.getElementById("board").hidden=true;
+    document.getElementById("exam").hidden=false;document.getElementById("bar").hidden=false;document.getElementById("float").hidden=false;
+    window.scrollTo(0,0);startTimer();
+  });
   (async function(){
     try{
       var u=window.claude?await window.claude.use("user"):null;
